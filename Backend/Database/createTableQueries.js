@@ -1,3 +1,4 @@
+// database/initDb.js
 import { Client } from 'pg';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -33,6 +34,8 @@ try {
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
       description TEXT,
+      upvotes INTEGER DEFAULT 0,
+      downvotes INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -45,6 +48,8 @@ try {
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       content TEXT NOT NULL,
       is_accepted BOOLEAN DEFAULT FALSE,
+      upvotes INTEGER DEFAULT 0,
+      downvotes INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -71,10 +76,15 @@ try {
     CREATE TABLE IF NOT EXISTS votes (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-      answer_id INTEGER REFERENCES answers(id) ON DELETE CASCADE,
+      question_id INTEGER REFERENCES questions(id),
+      answer_id INTEGER REFERENCES answers(id),
       value INTEGER NOT NULL CHECK (value IN (-1, 1)),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE (user_id, answer_id)
+      CONSTRAINT one_target CHECK (
+        (question_id IS NOT NULL AND answer_id IS NULL) OR
+        (answer_id IS NOT NULL AND question_id IS NULL)
+      ),
+      UNIQUE (user_id, question_id, answer_id)
     );
   `);
 
