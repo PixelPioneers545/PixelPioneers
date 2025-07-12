@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '../contexts/AuthContext';
 
 function Register() {
   const [isLogin, setIsLogin] = useState(true);
@@ -16,6 +17,9 @@ function Register() {
   const [touched, setTouched] = useState({});
   const [passwordScore, setPasswordScore] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
+
+  const { login, register, error: authError, clearError } = useAuth();
+  const navigate = useNavigate();
 
   // Validation rules
   const validations = {
@@ -113,6 +117,8 @@ function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setMessage({ text: '', type: '' });
+    clearError();
     
     if (!validateForm()) {
       setMessage({ text: 'Please fix the errors in the form', type: 'error' });
@@ -121,44 +127,51 @@ function Register() {
     }
 
     try {
-      const endpoint = isLogin ? 'http://localhost:5000/api/login' : 'http://localhost:5000/api/register';
-      const payload = isLogin 
-        ? { email: formData.email, password: formData.password } 
-        : formData;
+      let result;
       
-      const response = await axios.post(endpoint, payload);
-      
-      setMessage({ 
-        text: isLogin 
-          ? 'Login successful! Redirecting...' 
-          : 'Registration successful! Please login.', 
-        type: 'success' 
-      });
-      
-      // Reset form after successful submission
-      if (!isLogin) {
-        setFormData({
-          email: '',
-          username: '',
-          password: '',
-          confirmPassword: ''
+      if (isLogin) {
+        result = await login({
+          email: formData.email,
+          password: formData.password
         });
-        setTouched({});
-        setPasswordScore(0);
+      } else {
+        result = await register({
+          email: formData.email,
+          username: formData.username,
+          password: formData.password
+        });
       }
       
-      // Simulate redirect after successful login
-      if (isLogin && response.data.success) {
-        setTimeout(() => {
-          // In a real app, you would redirect to dashboard
-          setMessage({ text: 'Redirected to dashboard', type: 'success' });
-        }, 1500);
+      if (result.success) {
+        setMessage({ 
+          text: isLogin 
+            ? 'Login successful! Redirecting...' 
+            : 'Registration successful! Please login.', 
+          type: 'success' 
+        });
+        
+        // Reset form after successful registration
+        if (!isLogin) {
+          setFormData({
+            email: '',
+            username: '',
+            password: '',
+            confirmPassword: ''
+          });
+          setTouched({});
+          setPasswordScore(0);
+          setIsLogin(true);
+        } else {
+          // Redirect to home page after successful login
+          setTimeout(() => {
+            navigate('/');
+          }, 1500);
+        }
+      } else {
+        setMessage({ text: result.message, type: 'error' });
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.message || 
-                     error.request ? 'Server not responding' : 
-                     error.message || 'Request failed';
-      setMessage({ text: errorMsg, type: 'error' });
+      setMessage({ text: 'An unexpected error occurred', type: 'error' });
     } finally {
       setIsSubmitting(false);
     }
@@ -170,6 +183,7 @@ function Register() {
     setErrors({});
     setMessage({ text: '', type: '' });
     setTouched({});
+    clearError();
   };
 
   // Check if form is valid
@@ -189,6 +203,13 @@ function Register() {
     if (score < 90) return 'Strong';
     return 'Very Strong';
   };
+
+  // Show auth error from context
+  useEffect(() => {
+    if (authError) {
+      setMessage({ text: authError, type: 'error' });
+    }
+  }, [authError]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -258,7 +279,7 @@ function Register() {
                     value={formData.username}
                     onChange={handleChange}
                     onBlur={handleBlur}
-                    placeholder="cooluser123"
+                    placeholder="your_username"
                     className={`w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 transition-all ${
                       errors.username ? 'border-red-500 focus:ring-red-200' : 
                       'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
@@ -279,21 +300,12 @@ function Register() {
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                 Password
-                {!isLogin && passwordScore > 0 && (
-                  <span className={`ml-2 text-xs font-medium ${
-                    passwordScore < 30 ? 'text-red-500' : 
-                    passwordScore < 70 ? 'text-yellow-500' : 
-                    'text-green-500'
-                  }`}>
-                    {getPasswordStrength(passwordScore)}
-                  </span>
-                )}
               </label>
               <div className="relative">
                 <input
                   id="password"
                   name="password"
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={handleChange}
                   onBlur={handleBlur}
@@ -306,34 +318,32 @@ function Register() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3.5 text-gray-500 hover:text-blue-600"
+                  className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
                 >
-                  {showPassword ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                      <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
-                      <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
-                    </svg>
-                  )}
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
                 </button>
               </div>
               {errors.password && (
                 <p className="text-red-500 text-xs mt-1">{errors.password}</p>
               )}
               
-              {!isLogin && passwordScore > 0 && (
+              {!isLogin && formData.password && (
                 <div className="mt-2">
+                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>Password strength:</span>
+                    <span className={passwordScore < 30 ? 'text-red-500' : 
+                                   passwordScore < 70 ? 'text-yellow-500' : 
+                                   passwordScore < 90 ? 'text-blue-500' : 'text-green-500'}>
+                      {getPasswordStrength(passwordScore)}
+                    </span>
+                  </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div 
-                      className={`h-2 rounded-full ${
+                      className={`h-2 rounded-full transition-all duration-300 ${
                         passwordScore < 30 ? 'bg-red-500' : 
                         passwordScore < 70 ? 'bg-yellow-500' : 
-                        'bg-green-500'
-                      }`} 
+                        passwordScore < 90 ? 'bg-blue-500' : 'bg-green-500'
+                      }`}
                       style={{ width: `${passwordScore}%` }}
                     ></div>
                   </div>
@@ -364,7 +374,7 @@ function Register() {
                       'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
                     }`}
                   />
-                  {!errors.confirmPassword && formData.confirmPassword && formData.confirmPassword === formData.password && (
+                  {!errors.confirmPassword && formData.confirmPassword && formData.password === formData.confirmPassword && (
                     <div className="absolute right-3 top-3.5 text-green-500">
                       ✓
                     </div>
@@ -376,62 +386,52 @@ function Register() {
               </motion.div>
             )}
             
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={isSubmitting || !isFormValid()}
-                className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-all flex items-center justify-center ${
-                  isFormValid() ? 
-                  'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md' : 
-                  'bg-gray-300 cursor-not-allowed'
+            {message.text && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`p-3 rounded-lg text-sm ${
+                  message.type === 'error' 
+                    ? 'bg-red-50 text-red-700 border border-red-200' 
+                    : 'bg-green-50 text-green-700 border border-green-200'
                 }`}
               >
-                {isSubmitting ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    {isLogin ? 'Signing In...' : 'Creating Account...'}
-                  </>
-                ) : isLogin ? 'Sign In' : 'Create Account'}
-              </button>
-            </div>
-            
-            {isLogin && (
-              <div className="text-right">
-                <a href="#" className="text-sm text-blue-600 hover:underline">Forgot password?</a>
-              </div>
+                {message.text}
+              </motion.div>
             )}
             
-            <AnimatePresence>
-              {message.text && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className={`p-3 rounded-lg text-sm ${
-                    message.type === 'success' ? 
-                    'bg-green-100 text-green-800 border border-green-200' : 
-                    'bg-red-100 text-red-800 border border-red-200'
-                  }`}
-                >
-                  {message.text}
-                </motion.div>
+            <button
+              type="submit"
+              disabled={!isFormValid() || isSubmitting}
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-all ${
+                isFormValid() && !isSubmitting
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              {isSubmitting ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  {isLogin ? 'Signing in...' : 'Creating account...'}
+                </div>
+              ) : (
+                isLogin ? 'Sign In' : 'Create Account'
               )}
-            </AnimatePresence>
+            </button>
           </form>
           
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-center">
-            <p className="text-gray-600">
-              {isLogin ? "Don't have an account?" : "Already have an account?"}{' '}
-              <button 
+          <div className="px-6 pb-6">
+            <div className="text-center">
+              <button
                 onClick={toggleAuthMode}
-                className="text-blue-600 font-medium hover:underline focus:outline-none"
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors"
               >
-                {isLogin ? 'Sign up' : 'Sign in'}
+                {isLogin 
+                  ? "Don't have an account? Sign up" 
+                  : "Already have an account? Sign in"
+                }
               </button>
-            </p>
+            </div>
           </div>
         </div>
       </motion.div>

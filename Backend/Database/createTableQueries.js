@@ -34,8 +34,6 @@ try {
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
       description TEXT,
-      upvotes INTEGER DEFAULT 0,
-      downvotes INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -48,8 +46,6 @@ try {
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       content TEXT NOT NULL,
       is_accepted BOOLEAN DEFAULT FALSE,
-      upvotes INTEGER DEFAULT 0,
-      downvotes INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);

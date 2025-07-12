@@ -1,22 +1,33 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BellIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '../contexts/AuthContext';
+import { useQuestions } from '../contexts/QuestionsContext';
 
-const Header = ({ isLoggedIn, user, onLogin, onLogout, searchQuestions, navigate }) => {
+const Header = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
+  const { user, isAuthenticated, logout } = useAuth();
+  const { questions } = useQuestions();
+  const navigate = useNavigate();
+  
   useEffect(() => {
     if (searchQuery.length > 2) {
-      const results = searchQuestions(searchQuery);
+      const results = questions.filter(q => {
+        const searchLower = searchQuery.toLowerCase();
+        return q.title.toLowerCase().includes(searchLower) || 
+               q.body.toLowerCase().includes(searchLower);
+      });
       setSearchResults(results);
       setShowSearchResults(true);
     } else {
       setShowSearchResults(false);
     }
-  }, [searchQuery, searchQuestions]);
+  }, [searchQuery, questions]);
 
   const handleSearch = (e) => {
     setSearchQuery(e.target.value);
@@ -26,6 +37,12 @@ const Header = ({ isLoggedIn, user, onLogin, onLogout, searchQuestions, navigate
     setSearchQuery('');
     setShowSearchResults(false);
     navigate(`/questions/${question.id}`);
+  };
+
+  const handleLogout = () => {
+    logout();
+    setIsProfileOpen(false);
+    navigate('/');
   };
   
   const notifications = [
@@ -85,7 +102,7 @@ const Header = ({ isLoggedIn, user, onLogin, onLogout, searchQuestions, navigate
           </div>
           
           <div className="flex items-center space-x-4">
-            {isLoggedIn ? (
+            {isAuthenticated ? (
               <>
                 <button 
                   className="hidden md:inline-flex items-center px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-md transition"
@@ -135,7 +152,7 @@ const Header = ({ isLoggedIn, user, onLogin, onLogout, searchQuestions, navigate
                     className="flex items-center space-x-2 focus:outline-none"
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
                   >
-                    {user.avatar ? (
+                    {user?.avatar ? (
                       <img 
                         src={user.avatar} 
                         alt="Profile" 
@@ -143,17 +160,17 @@ const Header = ({ isLoggedIn, user, onLogin, onLogout, searchQuestions, navigate
                       />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-blue-400 flex items-center justify-center text-white text-sm">
-                        {user?.name?.charAt(0) || 'U'}
+                        {user?.username?.charAt(0) || 'U'}
                       </div>
                     )}
-                    <span className="hidden md:inline">{user?.name}</span>
+                    <span className="hidden md:inline">{user?.username}</span>
                   </button>
                   
                   {isProfileOpen && (
                     <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
                       <div className="px-4 py-2 text-sm text-gray-700 border-b">
-                        <div className="font-medium">Questions: {user?.questionCount}</div>
-                        <div className="font-medium">Answers: {user?.answerCount}</div>
+                        <div className="font-medium">Email: {user?.email}</div>
+                        <div className="font-medium">Role: {user?.role}</div>
                       </div>
                       <button 
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -166,10 +183,7 @@ const Header = ({ isLoggedIn, user, onLogin, onLogout, searchQuestions, navigate
                       </button>
                       <button 
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => {
-                          onLogout();
-                          setIsProfileOpen(false);
-                        }}
+                        onClick={handleLogout}
                       >
                         Logout
                       </button>
@@ -180,7 +194,7 @@ const Header = ({ isLoggedIn, user, onLogin, onLogout, searchQuestions, navigate
             ) : (
               <button 
                 className="px-4 py-2 bg-white text-blue-600 hover:bg-blue-50 rounded-md font-medium transition"
-                onClick={onLogin}
+                onClick={() => navigate('/login')}
               >
                 Login
               </button>

@@ -3,12 +3,87 @@ import client from "../../Database/config/PgClient.js";
 
 const router = express.Router();
 
-// POST /api/db/getQuestions - Get questions with filters
+// POST /api/db/getQuestions - Get questions with filters or single question by ID
 router.post("/getQuestions", async (req, res) => {
   try {
-    const { filter, tags, limit = 10, skip = 0 } = req.body;
+    const { id, filter, tags, limit = 10, skip = 0, includeAnswers = false } = req.body;
     
-    // Validate filter parameter
+    // If ID is provided, get single question
+    if (id) {
+      const questionQuery = `
+        SELECT 
+          q.id,
+          q.title as questiontitle,
+          q.description as questiondescription,
+          q.created_at as questiontime,
+          u.username,
+          ARRAY_AGG(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL) as questiontags,
+          COALESCE(SUM(v.value), 0) as vote_score
+        FROM questions q
+        LEFT JOIN users u ON q.user_id = u.id
+        LEFT JOIN question_tags qt ON q.id = qt.question_id
+        LEFT JOIN tags t ON qt.tag_id = t.id
+        LEFT JOIN votes v ON q.id = v.question_id
+        WHERE q.id = $1
+        GROUP BY q.id, q.title, q.description, q.created_at, u.username
+      `;
+      
+      const questionResult = await client.query(questionQuery, [id]);
+      
+      if (questionResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "Question not found",
+          message: "Question with the specified ID does not exist"
+        });
+      }
+      
+      const question = questionResult.rows[0];
+      
+      // Get answers if requested
+      let answers = [];
+      if (includeAnswers) {
+        const answersQuery = `
+          SELECT 
+            a.id as answerid,
+            a.content as answercontent,
+            a.is_accepted as answerisAccepted,
+            a.created_at as answertime,
+            u.username as usernamewhogaveanswer,
+            COALESCE(SUM(v.value), 0) as vote_score
+          FROM answers a
+          LEFT JOIN users u ON a.user_id = u.id
+          LEFT JOIN votes v ON a.id = v.answer_id
+          WHERE a.question_id = $1
+          GROUP BY a.id, a.content, a.is_accepted, a.created_at, u.username
+          ORDER BY a.is_accepted DESC, vote_score DESC, a.created_at ASC
+        `;
+        
+        const answersResult = await client.query(answersQuery, [id]);
+        answers = answersResult.rows.map(answer => ({
+          ...answer,
+          time: formatTimeAgo(answer.answertime)
+        }));
+      }
+      
+      const questionData = {
+        id: question.id,
+        questiontitle: question.questiontitle,
+        questiondescription: question.questiondescription,
+        username: question.username,
+        questiontags: question.questiontags || [],
+        vote_score: question.vote_score,
+        questiontime: formatTimeAgo(question.questiontime),
+        answers: answers
+      };
+      
+      return res.json({
+        success: true,
+        data: questionData
+      });
+    }
+    
+    // Validate filter parameter for multiple questions
     const validFilters = ["topvoted", "newest", "unanswered"];
     if (!validFilters.includes(filter)) {
       return res.status(400).json({
@@ -44,16 +119,15 @@ router.post("/getQuestions", async (req, res) => {
         q.id,
         q.title as questiontitle,
         q.description as questiondescription,
-        q.upvotes as questionupvotes,
-        q.downvotes as questiondownvotes,
         q.created_at as questiontime,
         u.username,
         ARRAY_AGG(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL) as questiontags,
-        (q.upvotes - q.downvotes) as vote_score
+        COALESCE(SUM(v.value), 0) as vote_score
       FROM questions q
       LEFT JOIN users u ON q.user_id = u.id
       LEFT JOIN question_tags qt ON q.id = qt.question_id
       LEFT JOIN tags t ON qt.tag_id = t.id
+      LEFT JOIN votes v ON q.id = v.question_id
     `;
 
     // Add tag filter if tags array is provided and not empty
@@ -65,7 +139,7 @@ router.post("/getQuestions", async (req, res) => {
       )`;
     }
 
-    baseQuery += ` GROUP BY q.id, q.title, q.description, q.upvotes, q.downvotes, q.created_at, u.username`;
+    baseQuery += ` GROUP BY q.id, q.title, q.description, q.created_at, u.username`;
 
     // Prepare query parameters
     const queryParams = tags && tags.length > 0 ? [tags, limitNum, skipNum] : [limitNum, skipNum];
@@ -108,15 +182,16 @@ router.post("/getQuestions", async (req, res) => {
           SELECT 
             a.id as answerid,
             a.content as answercontent,
-            a.upvotes as answerupvotes,
-            a.downvotes as answerdownvotes,
             a.is_accepted as answerisAccepted,
             a.created_at as answertime,
-            u.username as usernamewhogaveanswer
+            u.username as usernamewhogaveanswer,
+            COALESCE(SUM(v.value), 0) as vote_score
           FROM answers a
           LEFT JOIN users u ON a.user_id = u.id
+          LEFT JOIN votes v ON a.id = v.answer_id
           WHERE a.question_id = $1
-          ORDER BY a.is_accepted DESC, (a.upvotes - a.downvotes) DESC, a.created_at ASC
+          GROUP BY a.id, a.content, a.is_accepted, a.created_at, u.username
+          ORDER BY a.is_accepted DESC, vote_score DESC, a.created_at ASC
         `;
         
         const answersResult = await client.query(answersQuery, [question.id]);
@@ -133,8 +208,7 @@ router.post("/getQuestions", async (req, res) => {
           questiondescription: question.questiondescription,
           username: question.username,
           questiontags: question.questiontags || [],
-          questionupvotes: question.questionupvotes,
-          questiondownvotes: question.questiondownvotes,
+          vote_score: question.vote_score,
           questiontime: formatTimeAgo(question.questiontime),
           answers: answers
         };

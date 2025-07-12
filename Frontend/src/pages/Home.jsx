@@ -1,32 +1,53 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useQuestions } from '../contexts/QuestionsContext';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import QuestionCard from '../components/QuestionCard';
 
-const Home = ({ questions, navigate, isLoggedIn }) => {
+const Home = () => {
   const [filter, setFilter] = useState('newest');
   const [activeTags, setActiveTags] = useState([]);
   const [filteredQuestions, setFilteredQuestions] = useState([]);
   
-  // Get all unique tags
-  const tags = [...new Set(questions.flatMap(q => q.tags))];
+  const { isAuthenticated } = useAuth();
+  const { questions, loading, hasMore, loadQuestions } = useQuestions();
+  const navigate = useNavigate();
   
+  // Get all unique tags from the questions
+  const tags = [...new Set(questions.flatMap(q => {
+    const questionTags = q.tags || q.questiontags || [];
+    return Array.isArray(questionTags) ? questionTags : [];
+  }))];
+  
+  // Infinite scroll hook
+  const lastElementRef = useInfiniteScroll(loading, hasMore, () => {
+    loadQuestions(false, filter);
+  });
+  
+  // Filter and sort questions
   useEffect(() => {
     const filtered = questions
       .filter(question => {
         if (filter === 'unanswered') {
-          return question.answers.length === 0;
+          const answers = question.answers || [];
+          return answers.length === 0;
         }
         if (activeTags.length > 0) {
-          return activeTags.every(tag => question.tags.includes(tag));
+          const questionTags = question.tags || question.questiontags || [];
+          return activeTags.every(tag => 
+            Array.isArray(questionTags) && questionTags.includes(tag)
+          );
         }
         return true;
       })
       .sort((a, b) => {
         if (filter === 'newest') {
-          return new Date(b.timestamp) - new Date(a.timestamp);
+          const timeA = a.created_at || a.questiontime || a.timestamp || '';
+          const timeB = b.created_at || b.questiontime || b.timestamp || '';
+          return new Date(timeB) - new Date(timeA);
         }
-        if (filter === 'top-voted') {
-          return b.votes - a.votes;
-        }
+        // For 'topvoted', trust backend order, so no sort here
         return 0;
       });
       
@@ -40,6 +61,12 @@ const Home = ({ questions, navigate, isLoggedIn }) => {
       setActiveTags([...activeTags, tag]);
     }
   };
+
+  const handleFilterChange = useCallback((newFilter) => {
+    setFilter(newFilter);
+    // Reset questions when filter changes
+    loadQuestions(true, newFilter);
+  }, [loadQuestions]);
   
   return (
     <div>
@@ -47,16 +74,18 @@ const Home = ({ questions, navigate, isLoggedIn }) => {
         <h1 className="text-2xl font-bold text-gray-800">All Questions</h1>
         <button 
           className={`px-4 py-2 rounded-md font-medium ${
-            isLoggedIn 
+            isAuthenticated 
               ? 'bg-blue-600 text-white hover:bg-blue-700' 
               : 'bg-gray-300 text-gray-500 cursor-not-allowed'
           }`}
           onClick={() => navigate('/ask')}
-          disabled={!isLoggedIn}
+          disabled={!isAuthenticated}
         >
           Ask Question
         </button>
       </div>
+      
+
       
       <div className="md:flex gap-6">
         <div className="md:w-3/4">
@@ -67,7 +96,7 @@ const Home = ({ questions, navigate, isLoggedIn }) => {
                 className={`px-3 py-1 rounded-md ${
                   filter === 'newest' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
                 }`}
-                onClick={() => setFilter('newest')}
+                onClick={() => handleFilterChange('newest')}
               >
                 Newest
               </button>
@@ -75,15 +104,15 @@ const Home = ({ questions, navigate, isLoggedIn }) => {
                 className={`px-3 py-1 rounded-md ${
                   filter === 'unanswered' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
                 }`}
-                onClick={() => setFilter('unanswered')}
+                onClick={() => handleFilterChange('unanswered')}
               >
                 Unanswered
               </button>
               <button 
                 className={`px-3 py-1 rounded-md ${
-                  filter === 'top-voted' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
+                  filter === 'topvoted' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
                 }`}
-                onClick={() => setFilter('top-voted')}
+                onClick={() => handleFilterChange('topvoted')}
               >
                 Top Voted
               </button>
@@ -120,13 +149,26 @@ const Home = ({ questions, navigate, isLoggedIn }) => {
           
           <div>
             {filteredQuestions.length > 0 ? (
-              filteredQuestions.map(question => (
-                <QuestionCard 
-                  key={question.id} 
-                  question={question} 
-                  onClick={() => navigate(`/questions/${question.id}`)} 
-                />
-              ))
+              filteredQuestions.map((question, index) => {
+                // Add ref to last element for infinite scroll
+                if (index === filteredQuestions.length - 1) {
+                  return (
+                    <div key={question.id} ref={lastElementRef}>
+                      <QuestionCard 
+                        question={question} 
+                        onClick={() => navigate(`/questions/${question.id}`)} 
+                      />
+                    </div>
+                  );
+                }
+                return (
+                  <QuestionCard 
+                    key={question.id} 
+                    question={question} 
+                    onClick={() => navigate(`/questions/${question.id}`)} 
+                  />
+                );
+              })
             ) : (
               <div className="bg-white rounded-lg shadow p-6 text-center">
                 <h3 className="text-lg font-medium text-gray-800">No questions found</h3>
@@ -136,6 +178,18 @@ const Home = ({ questions, navigate, isLoggedIn }) => {
                     : "Be the first to ask a question!"
                   }
                 </p>
+              </div>
+            )}
+            
+            {loading && (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            )}
+            
+            {!hasMore && filteredQuestions.length > 0 && (
+              <div className="text-center py-8 text-gray-500">
+                No more questions to load
               </div>
             )}
           </div>
