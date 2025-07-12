@@ -1,9 +1,10 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import bcrypt from 'bcryptjs';
+import bcrypt from "bcrypt";
 import getAllTags from "./api/db/getAllTags.js";
 import getTagById from "./api/db/getTagById.js";
+import getQuestions from "./api/db/getQuestions.js";
 import healthCheck from "./api/db/healthCheck.js";
 
 dotenv.config();
@@ -24,6 +25,7 @@ app.use(express.json()); // For parsing JSON request bodies
 // === Routes ===
 app.use("/api/db", getAllTags);
 app.use("/api/db", getTagById);
+app.use("/api/db", getQuestions);
 app.use("/api/db", healthCheck);
 
 // === Root Route ===
@@ -33,12 +35,11 @@ app.get("/", (req, res) => {
     endpoints: {
       getAllTags: "/api/db/getAllTags",
       getTagById: "/api/db/getTagById/:id",
+      getQuestions: "/api/db/getQuestions (POST)",
       healthCheck: "/api/db/healthCheck"
     }
   });
 });
-
-
 
 // --- User Registration Endpoint ---
 app.post('/api/register', async (req, res) => {
@@ -89,8 +90,6 @@ app.post('/api/login', async (req, res) => {
     console.log(email)
   
 });
-
-
 
 // === Start Server ===
 app.listen(PORT, () => {
