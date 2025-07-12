@@ -6,6 +6,8 @@ import QuestionDetail from './pages/QuestionDetail';
 import AskQuestion from './pages/AskQuestion';
 import UserSettings from './pages/UserSettings';
 import { questions as initialQuestions } from './data';
+import Register from './components/register';
+
 
 function App() {
   return (
@@ -33,7 +35,7 @@ function AppContent() {
   
   const handleLogin = () => {
     setIsLoggedIn(true);
-    navigate('/');
+    navigate('/Register');
   };
   
   const handleLogout = () => {

@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-
+import bcrypt from 'bcryptjs';
 import getAllTags from "./api/db/getAllTags.js";
 import getTagById from "./api/db/getTagById.js";
 import healthCheck from "./api/db/healthCheck.js";
@@ -10,6 +10,12 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+app.use(cors({
+    origin: 'http://localhost:5173',
+    credentials: true,
+}));
+
 
 // === Middleware ===
 app.use(cors());
@@ -31,6 +37,60 @@ app.get("/", (req, res) => {
     }
   });
 });
+
+
+
+// --- User Registration Endpoint ---
+app.post('/api/register', async (req, res) => {
+    
+    const { email, username, password, } = req.body;
+    const role = 'user';
+    const created_at = new Date().toISOString()
+    
+    const salt = await bcrypt.genSalt(10); // Generate a salt (cost factor 10)
+    const passwordHash = await bcrypt.hash(password, salt);
+    
+    try {
+
+        const lastIdQuery = 'SELECT MAX(id) AS last_id FROM users';
+        const lastIdResult = await client.query(lastIdQuery);
+        const lastId = lastIdResult.rows[0].last_id || 1999; // Start from 2000 if table is empty
+        const newId = lastId + 1;
+        
+        const query = `
+        INSERT INTO users (id, email, username, password, role, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, email, username, role, created_at
+        `;
+
+        const values = [
+          newId,
+          email,
+          username,
+          passwordHash,
+          role,
+          created_at
+        ];
+
+        const result = await client.query(query, values);
+        console.log('✅ User inserted:', result.rows[0]);
+        res.status(201).json({ status: true, message: 'User registered successfully' });
+      } catch (err) {
+        console.error('❌ Error inserting user:', err.message);
+      } 
+});
+
+app.post('/api/login', async (req, res) => {
+    
+    const { email, password } = req.body;
+
+    const salt = await bcrypt.genSalt(10); // Generate a salt (cost factor 10)
+    const passwordHash = await bcrypt.hash(password, salt);
+    console.log(email)
+  
+});
+
+
 
 // === Start Server ===
 app.listen(PORT, () => {
